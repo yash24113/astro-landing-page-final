@@ -190,13 +190,13 @@ const year = new Date().getFullYear();
 
                   return (
                     <a
-                      key={s.id ?? norm(s)}
                       href={s.link!}
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={s.label || 'Social link'}
                       title={s.label || undefined}
                       class="age-socialBtn"
+                      data-key={s.id ?? norm(s)}
                     >
                       {
                         brand === 'youtube' ? (
