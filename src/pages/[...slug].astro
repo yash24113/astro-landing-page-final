@@ -1,12 +1,14 @@
 ---
+// src/pages/[...slug].astro
+
 import { Fragment } from "astro/jsx-runtime";
 
 /**
  * Handles:
- *   "/"                              → default GEO-based product landing
- *   "/ahmedabad"                     → city landing (legacy)
- *   "/:productSlug/in/..."           → product × location landing
- *
+ * "/"                     → default GEO-based product landing
+ * "/ahmedabad"            → city landing (legacy)
+ * "/:productSlug/in/..."  → product × location landing
+ * "/market-area"          → Market Area Modal (renders modal, skips content)
  * ZERO redirects; full meta injected into <head>.
  */
 
@@ -18,10 +20,12 @@ import ContactSection from "../components/sections/ContactSection.astro";
 import RelatedProductsByLocation from "../components/sections/RelatedProductsByLocation.astro";
 import OverviewSection from "../components/sections/OverviewSection.astro";
 import StickyContactModal from "../components/StickyContactModal.astro";
-
 import CommitmentText from "../components/sections/CommitmentText.astro";
 import CityProductHero from "../components/sections/CityProductHero.astro";
 import ProductHeroBySlug from "../components/sections/ProductHeroBySlug.astro";
+
+// Market area modal (opened from header)
+import MarketAreaModal from "../components/MarketAreaModal.astro";
 
 export const prerender = false;
 
@@ -31,12 +35,13 @@ const OVERVIEW_IMG = "/images/hero/overview-fabric.webp";
 
 /** This is your fixed default product slug (used when slug is missing) */
 const FALLBACK_PRODUCT_SLUG =
-  "bright-red-solid-dyed-100-cotton-poplin-fabric-carbon-laffer-finish";
+  "premium-cotton-t-shirt";
 
 // SEO + office APIs
 const SEO_PUBLIC_API = "https://test.amrita-fashions.com/api/seo/public";
 const SEO_DETAIL_API = "https://test.amrita-fashions.com/api/seo";
-const OFFICE_INFO_API = "https://test.amrita-fashions.com/landing/officeinformation";
+const OFFICE_INFO_API =
+  "https://test.amrita-fashions.com/landing/officeinformation";
 
 /** Public GEO API base (can override via env) */
 const GEO_API_BASE =
@@ -44,10 +49,34 @@ const GEO_API_BASE =
 
 // Known city codes (can later come from API)
 const CITY_CODES = [
-  "ahmedabad","jaipur","mumbai","delhi","tiruppur","surat","kanpur","kolkata",
-  "ludhiana","bhiwandi","ichalkaranji","noida","gurugram","coimbatore",
-  "bengaluru","hyderabad","chennai","pune","indore","bhopal","varanasi",
-  "solapur","amravati","panipat","nagpur","bhilwara","ranipet","rajkot"
+  "ahmedabad",
+  "jaipur",
+  "mumbai",
+  "delhi",
+  "tiruppur",
+  "surat",
+  "kanpur",
+  "kolkata",
+  "ludhiana",
+  "bhiwandi",
+  "ichalkaranji",
+  "noida",
+  "gurugram",
+  "coimbatore",
+  "bengaluru",
+  "hyderabad",
+  "chennai",
+  "pune",
+  "indore",
+  "bhopal",
+  "varanasi",
+  "solapur",
+  "amravati",
+  "panipat",
+  "nagpur",
+  "bhilwara",
+  "ranipet",
+  "rajkot",
 ].map((s) => s.toLowerCase());
 
 /* ========= GEO helpers ========= */
@@ -78,14 +107,14 @@ const slugifyForPath = (value: string): string => {
 };
 
 /** Resolve GEO from request IP and map to {country,state,city,area} slugs */
-const getGeoSlugsFromRequest = async (req: Request): Promise<GeoSlugs | null> => {
+const getGeoSlugsFromRequest = async (
+  req: Request
+): Promise<GeoSlugs | null> => {
   try {
     const xff = req.headers.get("x-forwarded-for") || "";
     const ipCandidate = xff.split(",")[0].trim();
     const ip =
-      ipCandidate &&
-      ipCandidate !== "127.0.0.1" &&
-      ipCandidate !== "::1"
+      ipCandidate && ipCandidate !== "127.0.0.1" && ipCandidate !== "::1"
         ? ipCandidate
         : "";
 
@@ -128,17 +157,23 @@ const getGeoSlugsFromRequest = async (req: Request): Promise<GeoSlugs | null> =>
 
 /* ========= Params / URL schema parsing ========= */
 
-const raw = Astro.params.slug;
-// For [...slug], raw is a STRING like
-// "bright-red...-finish/in/india/maharashtra/mumbai/surat"
-// or undefined for "/".
-const segments = raw
-  ? String(raw).split("/").filter(Boolean)
+const raw = Astro.params.slug as string | undefined;
+
+// 1. Check if the URL path ends with '/market-area'
+const isMarketAreaModalPath = raw?.endsWith("/market-area") ?? false;
+
+// 2. Remove the market-area segment for SEO/Content routing
+const rawForRouting = isMarketAreaModalPath
+  ? raw!.replace(/\/market-area$/, "")
+  : raw;
+
+const segments = rawForRouting
+  ? String(rawForRouting).split("/").filter(Boolean)
   : [];
 
 const isHomePage = segments.length === 0;
 
-const first  = (segments[0] ?? "").toLowerCase();
+const first = (segments[0] ?? "").toLowerCase();
 const second = (segments[1] ?? "").toLowerCase();
 const hasInKeyword = second === "in";
 
@@ -176,22 +211,21 @@ let locationSlug: string | undefined;
 
 if (isProductLocationPage) {
   productSlugFromUrl = first; // product slug from URL
-  countrySlug  = (segments[2] || "").toLowerCase() || undefined;
-  stateSlug    = (segments[3] || "").toLowerCase() || undefined;
-  citySlug     = (segments[4] || "").toLowerCase() || undefined;
+  countrySlug = (segments[2] || "").toLowerCase() || undefined;
+  stateSlug = (segments[3] || "").toLowerCase() || undefined;
+  citySlug = (segments[4] || "").toLowerCase() || undefined;
   locationSlug = (segments[5] || "").toLowerCase() || undefined;
 }
 
 // Fill missing parts for product × location URLs using GEO slugs
 if (isProductLocationPage && geo) {
-  countrySlug  = (countrySlug  || geo.countrySlug) as string;
-  stateSlug    = (stateSlug    || geo.stateSlug)   as string;
-  citySlug     = (citySlug     || geo.citySlug)    as string;
-  locationSlug = (locationSlug || geo.areaSlug)    as string;
+  countrySlug = (countrySlug || geo.countrySlug) as string;
+  stateSlug = (stateSlug || geo.stateSlug) as string;
+  citySlug = (citySlug || geo.citySlug) as string;
+  locationSlug = (locationSlug || geo.areaSlug) as string;
 }
 
-// This is the "display URL" you asked for:
-// http://host/<product>/in/<country>/<state>/<city>/<area>
+// This is the "display URL":
 const slugForGeo =
   (productSlugFromUrl || FALLBACK_PRODUCT_SLUG).toLowerCase();
 
@@ -199,11 +233,9 @@ const geoProductUrl = `${reqUrl.origin}/${slugForGeo}/in/${geo.countrySlug}/${ge
 
 /* ========= City / current-city helpers ========= */
 
-// For city hero / related (only used on city landing, not "/")
-const currentCity =
-  isCityLanding
-    ? first
-    : (citySlug || locationSlug || DEFAULT_CITY_CODE);
+const currentCity = isCityLanding
+  ? first
+  : (citySlug || locationSlug || DEFAULT_CITY_CODE);
 
 /* ========= SEO fetch ========= */
 
@@ -213,127 +245,113 @@ type SeoDoc = Record<string, any>;
 let seoDoc: SeoDoc | null = null;
 let relatedSeoDocs: SeoDoc[] = [];
 
-try {
-  if (isProductLocationPage && slugForGeo) {
-    // Backend detail endpoint:
-    // /api/seo/:slug/:country?state=&city=&location=
-    const countryForApi = countrySlug || geo.countrySlug || "india";
+// Skip heavy SEO calls if the URL indicates the modal-only path
+if (!isMarketAreaModalPath) {
+  try {
+    if (isProductLocationPage && slugForGeo) {
+      const countryForApi = countrySlug || geo.countrySlug || "india";
 
-    const detailUrl = new URL(
-      `${SEO_DETAIL_API}/${encodeURIComponent(
-        slugForGeo
-      )}/${encodeURIComponent(countryForApi)}`
-    );
+      const detailUrl = new URL(
+        `${SEO_DETAIL_API}/${encodeURIComponent(
+          slugForGeo
+        )}/${encodeURIComponent(countryForApi)}`
+      );
 
-    if (stateSlug) detailUrl.searchParams.set("state", stateSlug);
-    if (citySlug) detailUrl.searchParams.set("city", citySlug);
-    if (locationSlug) detailUrl.searchParams.set("location", locationSlug);
+      if (stateSlug) detailUrl.searchParams.set("state", stateSlug);
+      if (citySlug) detailUrl.searchParams.set("city", citySlug);
+      if (locationSlug) detailUrl.searchParams.set("location", locationSlug);
 
-    const res = await fetch(detailUrl.toString(), {
-      headers: { accept: "application/json" },
-    });
+      const res = await fetch(detailUrl.toString(), {
+        headers: { accept: "application/json" },
+      });
 
-    if (res.ok) {
-      const json = await res.json();
-      const data: SeoDoc[] = Array.isArray(json?.data)
-        ? json.data
-        : json?.data
-        ? [json.data]
-        : [];
+      if (res.ok) {
+        const json = await res.json();
+        const data: SeoDoc[] = Array.isArray(json?.data)
+          ? json.data
+          : json?.data
+          ? [json.data]
+          : [];
 
-      if (data.length) {
-        // 1) Try exact match by location slug
-        let primary: SeoDoc | null = null;
+        if (data.length) {
+          let primary: SeoDoc | null = null;
 
-        if (locationSlug) {
-          primary =
-            data.find((doc) => norm(doc?.location?.slug) === locationSlug) ??
-            null;
+          if (locationSlug) {
+            primary =
+              data.find((doc) => norm(doc?.location?.slug) === locationSlug) ??
+              null;
+          }
+
+          if (!primary && citySlug) {
+            primary =
+              data.find(
+                (doc) => norm(doc?.location?.city?.name) === citySlug
+              ) ?? null;
+          }
+
+          seoDoc = primary ?? data[0];
+          relatedSeoDocs = data.filter((doc) => doc !== seoDoc);
         }
+      }
+    } else {
+      const url = new URL(SEO_PUBLIC_API);
+      url.searchParams.set("path", reqUrl.pathname.replace(/\/+$/, "") || "/");
+      url.searchParams.set("mode", isCityPage ? "city" : "generic");
 
-        // 2) Fallback match by city name if not found
-        if (!primary && citySlug) {
-          primary =
-            data.find(
-              (doc) => norm(doc?.location?.city?.name) === citySlug
-            ) ?? null;
+      if (geo) {
+        url.searchParams.set("country", geo.countrySlug);
+        url.searchParams.set("state", geo.stateSlug);
+        url.searchParams.set("city", geo.citySlug);
+        url.searchParams.set("location", geo.areaSlug);
+      }
+
+      const res = await fetch(url.toString(), {
+        headers: { accept: "application/json" },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const data: SeoDoc[] = Array.isArray(json?.data)
+          ? json.data
+          : json?.data
+          ? [json.data]
+          : [];
+
+        if (data.length) {
+          seoDoc = data[0];
+          relatedSeoDocs = data.slice(1);
         }
-
-        // 3) Fallback to first record
-        seoDoc = primary ?? data[0];
-
-        // remaining docs → related list
-        relatedSeoDocs = data.filter((doc) => doc !== seoDoc);
       }
     }
-  } else {
-    // HOME ("/") and city / generic pages – use public SEO endpoint
-    const url = new URL(SEO_PUBLIC_API);
-
-    // full path of the current request (no query string)
-    url.searchParams.set("path", reqUrl.pathname.replace(/\/+$/, "") || "/");
-
-    // Mode hint for your backend
-    url.searchParams.set("mode", isCityPage ? "city" : "generic");
-
-    // Pass GEO slugs so backend can return location-specific products
-    if (geo) {
-      url.searchParams.set("country", geo.countrySlug);
-      url.searchParams.set("state", geo.stateSlug);
-      url.searchParams.set("city", geo.citySlug);
-      url.searchParams.set("location", geo.areaSlug);
-    }
-
-    const res = await fetch(url.toString(), {
-      headers: { accept: "application/json" },
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      const data: SeoDoc[] = Array.isArray(json?.data)
-        ? json.data
-        : json?.data
-        ? [json.data]
-        : [];
-
-      if (data.length) {
-        // First item -> hero product; rest -> related
-        seoDoc = data[0];
-        relatedSeoDocs = data.slice(1);
-      }
-    }
+  } catch (_e) {
+    seoDoc = null;
   }
-} catch (_e) {
-  seoDoc = null;
 }
 
-/**
- * currentSlug (what we pass to ProductHeroBySlug & catalogue API):
- *   - Prefer seoDoc.product.slug  (PRODUCT slug from API)
- *   - Else fallback to productSlugFromUrl
- *   - Else fallback to first URL segment (for older patterns)
- *   - Else fallback to your fixed default product slug
- */
 const productSlugFromSeo =
   seoDoc?.product?.slug ? norm(seoDoc.product.slug) : undefined;
 
-const currentSlug =
-  productSlugFromSeo
-    ? productSlugFromSeo
-    : (productSlugFromUrl ||
-       (!isCityPage ? (segments[0] ?? "").toLowerCase() : FALLBACK_PRODUCT_SLUG));
+const currentSlug = productSlugFromSeo
+  ? productSlugFromSeo
+  : productSlugFromUrl ||
+    (!isCityPage ? (segments[0] ?? "").toLowerCase() : FALLBACK_PRODUCT_SLUG);
 
 /* ========= Page-level fallbacks ========= */
 
-const fallbackTitle = !isProductLocationPage && !isCityPage
-  ? "Home – Amrita Fashions"
-  : "Fabric – Amrita Fashions";
-const fallbackDesc  = "Premium fabrics for B2B buyers.";
+const fallbackTitle =
+  !isProductLocationPage && !isCityPage
+    ? "Home – Amrita Fashions"
+    : "Fabric – Amrita Fashions";
+const fallbackDesc = "Premium fabrics for B2B buyers.";
 
-const pageTitle = seoDoc?.title || fallbackTitle;
-const pageDesc  = seoDoc?.description || seoDoc?.excerpt || fallbackDesc;
+// Modal path-specific title/description
+const pageTitle = isMarketAreaModalPath
+  ? "Select Market Area – Amrita Fashions"
+  : seoDoc?.title || fallbackTitle;
+const pageDesc = isMarketAreaModalPath
+  ? "Choose your country, state, and city to find local market information."
+  : seoDoc?.description || seoDoc?.excerpt || fallbackDesc;
 
-// canonical (no query params)
 const canonical = reqUrl.origin + reqUrl.pathname;
 
 /* ========= Helpers ========= */
@@ -347,41 +365,6 @@ function s(v: any) {
     return String(v);
   }
 }
-
-/* ========= Company info (for JSON-LD) ========= */
-type OfficeInfo = {
-  companyName?: string;
-  companyPhone1?: string;
-  companyPhone2?: string;
-  whatsappNumber?: string;
-  companyEmail?: string;
-  companyAddress?: string;
-  companyLogoUrl?: string;
-};
-
-let officeDoc: OfficeInfo | null = null;
-try {
-  const res = await fetch(OFFICE_INFO_API, { headers: { accept: "application/json" } });
-  if (res.ok) {
-    const json = await res.json();
-    const data = Array.isArray(json?.data) ? json.data : [];
-    officeDoc = data.length ? (data[0] as OfficeInfo) : null;
-  }
-} catch (_e) {
-  officeDoc = null;
-}
-
-const defaultCompanyName = "Amrita Fashions";
-const company = {
-  name: (officeDoc?.companyName ?? defaultCompanyName).trim() || defaultCompanyName,
-  email: (officeDoc?.companyEmail ?? "").trim(),
-  phone:
-    (officeDoc?.companyPhone1 ?? "").trim() ||
-    (officeDoc?.whatsappNumber ?? "").trim() ||
-    (officeDoc?.companyPhone2 ?? "").trim(),
-  address: (officeDoc?.companyAddress ?? "").trim(),
-  logo: (officeDoc?.companyLogoUrl ?? "").trim(),
-};
 
 const stripHtml = (value: string) =>
   value
@@ -398,9 +381,50 @@ const cleanText = (value: any) => {
 
 const cleanPhone = (value: string) => value.replace(/[^\d+]/g, "");
 
+/* ========= Company info (for JSON-LD) ========= */
+type OfficeInfo = {
+  companyName?: string;
+  companyPhone1?: string;
+  companyPhone2?: string;
+  whatsappNumber?: string;
+  companyEmail?: string;
+  companyAddress?: string;
+  companyLogoUrl?: string;
+};
+
+let officeDoc: OfficeInfo | null = null;
+try {
+  const res = await fetch(OFFICE_INFO_API, {
+    headers: { accept: "application/json" },
+  });
+  if (res.ok) {
+    const json = await res.json();
+    const data = Array.isArray(json?.data) ? json.data : [];
+    officeDoc = data.length ? (data[0] as OfficeInfo) : null;
+  }
+} catch (_e) {
+  officeDoc = null;
+}
+
+const defaultCompanyName = "Amrita Fashions";
+const company = {
+  name:
+    (officeDoc?.companyName ?? defaultCompanyName).trim() ||
+    defaultCompanyName,
+  email: (officeDoc?.companyEmail ?? "").trim(),
+  phone:
+    (officeDoc?.companyPhone1 ?? "").trim() ||
+    (officeDoc?.whatsappNumber ?? "").trim() ||
+    (officeDoc?.companyPhone2 ?? "").trim(),
+  address: (officeDoc?.companyAddress ?? "").trim(),
+  logo: (officeDoc?.companyLogoUrl ?? "").trim(),
+};
+
 /* ========= JSON-LD ========= */
 
 const structuredData = (() => {
+  if (isMarketAreaModalPath) return [];
+
   if (!seoDoc && !company.name) return [];
 
   const canonicalUrl = seoDoc?.canonical_url || canonical;
@@ -467,7 +491,8 @@ const structuredData = (() => {
               }
             : undefined,
         aggregateRating:
-          typeof seoDoc?.rating_value === "number" && typeof seoDoc?.rating_count === "number"
+          typeof seoDoc?.rating_value === "number" &&
+          typeof seoDoc?.rating_count === "number"
             ? {
                 "@type": "AggregateRating",
                 ratingValue: seoDoc.rating_value,
@@ -517,7 +542,9 @@ const structuredData = (() => {
         }
       : null;
 
-  return [organizationLd, productLd, breadcrumbLd, localBusinessLd].filter(Boolean);
+  return [organizationLd, productLd, breadcrumbLd, localBusinessLd].filter(
+    Boolean
+  );
 })();
 
 const structuredDataJson = structuredData
@@ -528,23 +555,117 @@ const structuredDataJson = structuredData
   .filter(Boolean);
 ---
 
+
+
 <LandingLayout title={pageTitle} description={pageDesc}>
-  <!-- Inject ALL meta/link tags into the <head> -->
   <Fragment slot="head">
     <title>{pageTitle}</title>
     <meta name="description" content={pageDesc} />
 
     <link rel="canonical" href={canonical} />
 
-    <!-- Expose GEO-based product URL (debug / personalization) -->
     <meta name="x-geo-product-url" content={geoProductUrl} />
+    {/* this is what navbar reads */}
+    <meta name="x-product-slug" content={slugForGeo} />
 
     {seoDoc?.keywords && <meta name="keywords" content={s(seoDoc.keywords)} />}
     {seoDoc?.robots && <meta name="robots" content={s(seoDoc.robots)} />}
-    {seoDoc?.author_name && <meta name="author" content={s(seoDoc.author_name)} />}
-    {seoDoc?.themeColor && <meta name="theme-color" content={s(seoDoc.themeColor)} />}
+    {seoDoc?.author_name && (
+      <meta name="author" content={s(seoDoc.author_name)} />
+    )}
+    {seoDoc?.themeColor && (
+      <meta name="theme-color" content={s(seoDoc.themeColor)} />
+    )}
 
-    {seoDoc?.viewport && <meta name="viewport" content={s(seoDoc.viewport)} />}
+    {/* ...rest of your meta + JSON-LD exactly as before... */}
+    {structuredDataJson.map((json) => (
+      <script type="application/ld+json" set:html={json} />
+    ))}
+  </Fragment>
+
+  {/* rest of your layout content exactly as before */}
+  {isMarketAreaModalPath ? null : (
+    <Fragment>
+      {isCityPage ? (
+        <CityProductHero cityCode={currentCity} />
+      ) : (
+        <ProductHeroBySlug
+          currentSlug={currentSlug}
+          seoDoc={seoDoc}
+          productFromSeo={seoDoc?.product}
+        />
+      )}
+
+      {isCityPage ? (
+        <OverviewSection
+          heading="Leading B2B Fabric Supplier Worldwide"
+          tagline="ISO 9001 Certified • 500+ Global Partners • Ships to 50+ Countries"
+          image={OVERVIEW_IMG}
+          imageAlt="Premium textile manufacturing"
+        >
+          <CommitmentText slot="extra" />
+        </OverviewSection>
+      ) : (
+        <OverviewSection currentSlug={currentSlug} />
+      )}
+
+      {isCityPage ? (
+        <RelatedProductsByLocation
+          cityCode={currentCity}
+          seoDoc={seoDoc}
+          products={relatedSeoDocs}
+          title="Explore Our Fabric Catalog"
+          subtitle="City-specific products curated for your sourcing"
+        />
+      ) : (
+        <RelatedProductsByLocation
+          currentSlug={currentSlug}
+          seoDoc={seoDoc}
+          products={relatedSeoDocs}
+          title="Explore Our Fabric Catalog"
+          subtitle="More options from this location"
+        />
+      )}
+    </Fragment>
+  )}
+
+  <StickyContactModal
+    side="left"
+    targetId="contact"
+    offsetBottom="max(env(safe-area-inset-bottom),16px)"
+    label="Get Your Free Sample Today"
+  />
+
+  <WhatsAppFab />
+  <FashionTestimonial />
+  <FAQ />
+  <ContactSection />
+  <MarketAreaModal />
+</LandingLayout>
+
+
+  <Fragment slot="head">
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDesc} />
+
+    <link rel="canonical" href={canonical} />
+
+    <meta name="x-geo-product-url" content={geoProductUrl} />
+    {/* product slug for header JS */}
+    <meta name="x-product-slug" content={slugForGeo} />
+
+    {seoDoc?.keywords && <meta name="keywords" content={s(seoDoc.keywords)} />}
+    {seoDoc?.robots && <meta name="robots" content={s(seoDoc.robots)} />}
+    {seoDoc?.author_name && (
+      <meta name="author" content={s(seoDoc.author_name)} />
+    )}
+    {seoDoc?.themeColor && (
+      <meta name="theme-color" content={s(seoDoc.themeColor)} />
+    )}
+
+    {seoDoc?.viewport && (
+      <meta name="viewport" content={s(seoDoc.viewport)} />
+    )}
 
     {seoDoc?.formatDetection && (
       <meta name="format-detection" content={s(seoDoc.formatDetection)} />
@@ -585,7 +706,10 @@ const structuredDataJson = structuredData
       <meta property="og:video:width" content={String(seoDoc.ogVideoWidth)} />
     )}
     {typeof seoDoc?.ogVideoHeight === "number" && (
-      <meta property="og:video:height" content={String(seoDoc.ogVideoHeight)} />
+      <meta
+        property="og:video:height"
+        content={String(seoDoc.ogVideoHeight)}
+      />
     )}
 
     {seoDoc?.twitterCard && (
@@ -623,50 +747,50 @@ const structuredDataJson = structuredData
     ))}
   </Fragment>
 
-  {/* HERO:
-      - "/"               → product hero (using GEO+public SEO)
-      - "/city"           → city hero
-      - "/:slug/in/..."   → product hero
-  */}
-  {isCityPage ? (
-    <CityProductHero cityCode={currentCity} />
-  ) : (
-    <ProductHeroBySlug
-      currentSlug={currentSlug}
-      seoDoc={seoDoc}
-      productFromSeo={seoDoc?.product}
-    />
-  )}
+  {/* Render main content sections ONLY if the modal path is NOT active */}
+  {isMarketAreaModalPath ? null : (
+    <Fragment>
+      {isCityPage ? (
+        <CityProductHero cityCode={currentCity} />
+      ) : (
+        <ProductHeroBySlug
+          currentSlug={currentSlug}
+          seoDoc={seoDoc}
+          productFromSeo={seoDoc?.product}
+        />
+      )}
 
-  {isCityPage ? (
-    <OverviewSection
-      heading="Leading B2B Fabric Supplier Worldwide"
-      tagline="ISO 9001 Certified • 500+ Global Partners • Ships to 50+ Countries"
-      image={OVERVIEW_IMG}
-      imageAlt="Premium textile manufacturing"
-    >
-      <CommitmentText slot="extra" />
-    </OverviewSection>
-  ) : (
-    <OverviewSection currentSlug={currentSlug} />
-  )}
+      {isCityPage ? (
+        <OverviewSection
+          heading="Leading B2B Fabric Supplier Worldwide"
+          tagline="ISO 9001 Certified • 500+ Global Partners • Ships to 50+ Countries"
+          image={OVERVIEW_IMG}
+          imageAlt="Premium textile manufacturing"
+        >
+          <CommitmentText slot="extra" />
+        </OverviewSection>
+      ) : (
+        <OverviewSection currentSlug={currentSlug} />
+      )}
 
-  {isCityPage ? (
-    <RelatedProductsByLocation
-      cityCode={currentCity}
-      seoDoc={seoDoc}
-      products={relatedSeoDocs}
-      title="Explore Our Fabric Catalog"
-      subtitle="City-specific products curated for your sourcing"
-    />
-  ) : (
-    <RelatedProductsByLocation
-      currentSlug={currentSlug}
-      seoDoc={seoDoc}
-      products={relatedSeoDocs}
-      title="Explore Our Fabric Catalog"
-      subtitle="More options from this location"
-    />
+      {isCityPage ? (
+        <RelatedProductsByLocation
+          cityCode={currentCity}
+          seoDoc={seoDoc}
+          products={relatedSeoDocs}
+          title="Explore Our Fabric Catalog"
+          subtitle="City-specific products curated for your sourcing"
+        />
+      ) : (
+        <RelatedProductsByLocation
+          currentSlug={currentSlug}
+          seoDoc={seoDoc}
+          products={relatedSeoDocs}
+          title="Explore Our Fabric Catalog"
+          subtitle="More options from this location"
+        />
+      )}
+    </Fragment>
   )}
 
   <StickyContactModal
@@ -680,4 +804,7 @@ const structuredDataJson = structuredData
   <FashionTestimonial />
   <FAQ />
   <ContactSection />
+
+  {/* Modal rendered on all routes; internally controls visibility */}
+  <MarketAreaModal />
 </LandingLayout>

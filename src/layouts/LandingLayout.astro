@@ -3,6 +3,7 @@ import '../styles/theme.css';
 import Navbar from '../components/common/Navbar.astro';
 import Footer from '../components/common/Footer.astro';
 import PerfBooster from "../components/common/PerfBooster.astro";
+import SiteHeader from "../components/SiteHeader.astro";
 
 const {
   title = 'Landing',
@@ -45,7 +46,8 @@ const canonical = reqUrl.origin + reqUrl.pathname;
   </head>
 
   <body class="page">
-    <Navbar />
+    <!-- <Navbar /> -->
+    <SiteHeader />
     <main id="main" class="container-fluid">
       <slot />
     </main>
