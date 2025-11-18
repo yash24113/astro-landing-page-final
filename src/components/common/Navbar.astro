@@ -131,7 +131,11 @@ const {
     }
 
     function setBodyOffset() {
-      const h = header?.offsetHeight || 0;
+      const currentVar = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--header-h')
+      ) || 96;
+      let h = header?.offsetHeight || currentVar;
+      if (h < 40) h = currentVar;
       document.documentElement.style.setProperty('--header-h', h + 'px');
       document.body.style.paddingTop = h + 'px';
     }
@@ -218,7 +222,10 @@ const {
         closeMenu();
       }
 
-      const navAnchor = target.closest('.nav-links .link, .mobile-nav .m-link');
+      const navAnchor = target.closest(
+  '.nav-links .link, .mobile-nav .m-link, .age-footer .age-navLink'
+);
+
       if (!navAnchor) return;
 
       const href = navAnchor.getAttribute('href') || '';
@@ -266,6 +273,8 @@ const {
 
     window.addEventListener('scroll', onScroll, { passive: true });
 
+    setBodyOffset();
+
     cb && cb.addEventListener('change', () => {
       syncAria();
       setBodyOffset();
@@ -310,6 +319,13 @@ const {
 </script>
 
 <style>
+:root{
+  --header-h: 96px;
+}
+body{
+  padding-top: var(--header-h);
+}
+
 /* ---------- a11y ---------- */
 .skip-link{
   position: absolute;
@@ -355,10 +371,12 @@ const {
   z-index: 900;
   background: transparent;
   padding-block: clamp(6px, 1.2vw, 12px);
-  transition: padding .25s ease, background .25s ease;
+  transition: padding .25s ease, background .25s ease, box-shadow .3s ease;
 }
 .site-header.is-scrolled{
-  padding-block: 6px; /* subtle shrink */
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 1px 0 rgba(12,28,52,.08);
+  backdrop-filter: blur(12px);
 }
 
 /* ---------- pill shell ---------- */
@@ -378,7 +396,12 @@ const {
   transition: all 0.3s ease;
   min-width: 0;
 }
-
+.site-header.is-scrolled .nav-shell{
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
 /* Brand */
 .brand{
   display:flex;
